@@ -26,7 +26,7 @@ oauthlib==3.2.2
     #   requests-oauthlib
 packaging==23.2
     # via pytest
-pdpyras==4.5.0
+pdpyras==4.5.2
     # via -r requirements.in
 pluggy==1.5.0
     # via pytest
