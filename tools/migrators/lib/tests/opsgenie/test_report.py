@@ -43,6 +43,15 @@ def test_format_integration():
     assert format_integration(integration) == "Prometheus Alerts (Prometheus)"
 
 
+def test_format_integration_with_team():
+    integration = {
+        "name": "Email Integration",
+        "type": "Email",
+        "teamName": "team-c",
+    }
+    assert format_integration(integration) == "Email Integration (Email) [team: team-c]"
+
+
 def test_user_report():
     users = [
         {
@@ -156,3 +165,26 @@ def test_integration_report():
         "⚠️ Datadog Alerts (Datadog) (existing integration will be deleted)" in report
     )
     assert "❌ Custom Integration (Custom) — unsupported integration type" in report
+
+
+def test_integration_report_with_team_names():
+    integrations = [
+        {
+            "name": "Email",
+            "type": "Email",
+            "oncall_integration": None,
+            "oncall_type": "inbound_email",
+            "teamName": "team-c",
+        },
+        {
+            "name": "Custom",
+            "type": "Custom",
+            "oncall_integration": None,
+            "oncall_type": None,
+            "teamName": "team-d",
+        },
+    ]
+
+    report = integration_report(integrations)
+    assert "✅ Email (Email) [team: team-c]" in report
+    assert "❌ Custom (Custom) [team: team-d] — unsupported integration type" in report
