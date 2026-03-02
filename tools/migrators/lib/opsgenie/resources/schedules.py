@@ -27,8 +27,22 @@ ONCALL_DAY_ABBREVS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
 
 def expand_day_range(start_day: str, end_day: str) -> list[str]:
     """Expand an OpsGenie day range (e.g. monday–friday) to OnCall day abbreviations."""
-    start_idx = DAYS_OF_WEEK.index(start_day.lower())
-    end_idx = DAYS_OF_WEEK.index(end_day.lower())
+    start_lower = start_day.lower()
+    end_lower = end_day.lower()
+
+    if start_lower not in DAYS_OF_WEEK:
+        raise ValueError(
+            f"Unknown start day '{start_day}'. "
+            f"Expected one of: {', '.join(DAYS_OF_WEEK)}"
+        )
+    if end_lower not in DAYS_OF_WEEK:
+        raise ValueError(
+            f"Unknown end day '{end_day}'. "
+            f"Expected one of: {', '.join(DAYS_OF_WEEK)}"
+        )
+
+    start_idx = DAYS_OF_WEEK.index(start_lower)
+    end_idx = DAYS_OF_WEEK.index(end_lower)
     if end_idx >= start_idx:
         indices = range(start_idx, end_idx + 1)
     else:
@@ -104,7 +118,11 @@ def match_schedule(
         if schedule["name"].lower().strip() == candidate["name"].lower().strip():
             oncall_schedule = candidate
 
-    _, errors = Schedule.from_dict(schedule).to_oncall_schedule(user_id_map)
+    try:
+        _, errors = Schedule.from_dict(schedule).to_oncall_schedule(user_id_map)
+    except (ValueError, KeyError, TypeError) as exc:
+        errors = [f"Failed to parse schedule: {exc}"]
+
     schedule["migration_errors"] = errors
     schedule["oncall_schedule"] = oncall_schedule
 
@@ -284,6 +302,9 @@ class Override:
         }
 
 
+SUPPORTED_RESTRICTION_TYPES = {"time-of-day", "weekday-and-time-of-day"}
+
+
 @dataclass
 class TimeRestriction:
     """Parsed OpsGenie time restriction."""
@@ -293,7 +314,12 @@ class TimeRestriction:
 
     @classmethod
     def from_dict(cls, data: dict) -> "TimeRestriction":
-        restriction_type = data["type"]
+        restriction_type = data.get("type", "")
+        if restriction_type not in SUPPORTED_RESTRICTION_TYPES:
+            raise ValueError(
+                f"Unsupported time restriction type '{restriction_type}'. "
+                f"Supported types: {', '.join(sorted(SUPPORTED_RESTRICTION_TYPES))}"
+            )
         if restriction_type == "time-of-day":
             restrictions = [data["restriction"]]
         else:
@@ -440,6 +466,10 @@ class Rotation:
             "week_start": "MO",
             "source": ONCALL_SHIFT_WEB_SOURCE,
         }
+
+        if frequency == "weekly":
+            shift["by_day"] = list(ONCALL_DAY_ABBREVS)
+
         return self._apply_common_fields(shift)
 
     def _build_weekday_time_shift(
