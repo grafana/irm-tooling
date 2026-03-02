@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -12,6 +12,38 @@ from lib.opsgenie.config import (
     OPSGENIE_FILTER_USERS,
 )
 from lib.utils import dt_to_oncall_datetime, duration_to_frequency_and_interval
+
+DAYS_OF_WEEK = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+]
+ONCALL_DAY_ABBREVS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+
+
+def expand_day_range(start_day: str, end_day: str) -> list[str]:
+    """Expand an OpsGenie day range (e.g. monday–friday) to OnCall day abbreviations."""
+    start_idx = DAYS_OF_WEEK.index(start_day.lower())
+    end_idx = DAYS_OF_WEEK.index(end_day.lower())
+    if end_idx >= start_idx:
+        indices = range(start_idx, end_idx + 1)
+    else:
+        indices = list(range(start_idx, 7)) + list(range(0, end_idx + 1))
+    return [ONCALL_DAY_ABBREVS[i] for i in indices]
+
+
+def calc_restriction_duration_seconds(restriction: dict) -> int:
+    """Calculate the duration in seconds for a single time-restriction window."""
+    start_minutes = restriction["startHour"] * 60 + restriction["startMin"]
+    end_minutes = restriction["endHour"] * 60 + restriction["endMin"]
+    if end_minutes > start_minutes:
+        return (end_minutes - start_minutes) * 60
+    # Overnight wrap-around
+    return (24 * 60 - start_minutes + end_minutes) * 60
 
 
 def filter_schedules(schedules: list[dict]) -> list[dict]:
@@ -71,19 +103,6 @@ def match_schedule(
     for candidate in oncall_schedules:
         if schedule["name"].lower().strip() == candidate["name"].lower().strip():
             oncall_schedule = candidate
-
-    # Check if any rotation has time restrictions
-    has_time_restrictions = False
-    for rotation in schedule.get("rotations", []):
-        if rotation.get("timeRestriction"):
-            has_time_restrictions = True
-            break
-
-    if has_time_restrictions:
-        schedule["migration_errors"] = [
-            "Schedule contains time restrictions which are not supported for migration"
-        ]
-        return
 
     _, errors = Schedule.from_dict(schedule).to_oncall_schedule(user_id_map)
     schedule["migration_errors"] = errors
@@ -171,7 +190,7 @@ class Schedule:
                 )
                 continue
 
-            shifts.append(rotation.to_oncall_shift(user_id_map))
+            shifts.extend(rotation.to_oncall_shifts(user_id_map))
 
         # Process overrides
         for override in self.overrides:
@@ -266,6 +285,23 @@ class Override:
 
 
 @dataclass
+class TimeRestriction:
+    """Parsed OpsGenie time restriction."""
+
+    type: str
+    restrictions: list[dict]
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TimeRestriction":
+        restriction_type = data["type"]
+        if restriction_type == "time-of-day":
+            restrictions = [data["restriction"]]
+        else:
+            restrictions = data["restrictions"]
+        return cls(type=restriction_type, restrictions=restrictions)
+
+
+@dataclass
 class Rotation:
     """
     Utility class for converting an OpsGenie rotation to an OnCall shift.
@@ -277,11 +313,11 @@ class Rotation:
     start_date: datetime
     end_date: Optional[datetime]
     participants: List[dict]
+    time_restriction: Optional[TimeRestriction] = field(default=None)
 
     @classmethod
     def from_dict(cls, rotation: dict) -> "Rotation":
         """Create a Rotation object from an OpsGenie API response for a rotation."""
-        # Keep start_date in UTC format
         start_date = datetime.fromisoformat(
             rotation["startDate"].replace("Z", "+00:00")
         )
@@ -292,6 +328,10 @@ class Rotation:
                 rotation["endDate"].replace("Z", "+00:00")
             )
 
+        time_restriction = None
+        if rotation.get("timeRestriction"):
+            time_restriction = TimeRestriction.from_dict(rotation["timeRestriction"])
+
         return cls(
             name=rotation["name"],
             type=rotation["type"],
@@ -299,21 +339,56 @@ class Rotation:
             start_date=start_date,
             end_date=end_date,
             participants=rotation["participants"],
+            time_restriction=time_restriction,
         )
 
-    def to_oncall_shift(self, user_id_map: Dict[str, str]) -> dict:
-        """Convert a Rotation object to an OnCall shift."""
-        # Calculate base duration based on type and length
-        if self.type == "daily":
-            base_duration = timedelta(days=self.length)
-        elif self.type == "weekly":
-            base_duration = timedelta(weeks=self.length)
-        elif self.type == "hourly":
-            base_duration = timedelta(hours=self.length)
-        else:
-            base_duration = timedelta(days=self.length)  # Default to daily
+    def to_oncall_shifts(self, user_id_map: Dict[str, str]) -> list[dict]:
+        """Convert a Rotation to one or more OnCall shifts.
 
-        # Use duration_to_frequency_and_interval to get the natural frequency
+        Time restrictions may produce multiple shifts (one per restriction
+        window in the weekday-and-time-of-day case).
+        """
+        if self.time_restriction is None:
+            return [self._build_base_shift(user_id_map)]
+
+        if self.time_restriction.type == "time-of-day":
+            r = self.time_restriction.restrictions[0]
+            return [self._build_time_of_day_shift(user_id_map, r)]
+
+        shifts = []
+        for idx, r in enumerate(self.time_restriction.restrictions):
+            suffix = f"-{idx + 1}" if len(self.time_restriction.restrictions) > 1 else ""
+            shifts.append(self._build_weekday_time_shift(user_id_map, r, suffix))
+        return shifts
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _rolling_users(self, user_id_map: Dict[str, str]) -> list[list[str]]:
+        return [
+            [user_id_map[p["id"]]]
+            for p in self.participants
+            if p["type"] == "user" and p["id"] in user_id_map
+        ]
+
+    def _base_duration(self) -> timedelta:
+        if self.type == "daily":
+            return timedelta(days=self.length)
+        elif self.type == "weekly":
+            return timedelta(weeks=self.length)
+        elif self.type == "hourly":
+            return timedelta(hours=self.length)
+        return timedelta(days=self.length)
+
+    def _apply_common_fields(self, shift: dict) -> dict:
+        if self.end_date:
+            shift["until"] = dt_to_oncall_datetime(self.end_date)
+        return shift
+
+    def _build_base_shift(self, user_id_map: Dict[str, str]) -> dict:
+        """Shift without any time restriction."""
+        base_duration = self._base_duration()
         frequency, interval = duration_to_frequency_and_interval(base_duration)
 
         shift = {
@@ -326,17 +401,77 @@ class Rotation:
             "duration": int(base_duration.total_seconds()),
             "frequency": frequency,
             "interval": interval,
-            "rolling_users": [
-                [user_id_map[p["id"]]]
-                for p in self.participants
-                if p["type"] == "user" and p["id"] in user_id_map
-            ],
+            "rolling_users": self._rolling_users(user_id_map),
             "start_rotation_from_user_index": 0,
             "week_start": "MO",
             "source": ONCALL_SHIFT_WEB_SOURCE,
         }
+        return self._apply_common_fields(shift)
 
-        if self.end_date:
-            shift["until"] = dt_to_oncall_datetime(self.end_date)
+    def _restricted_start(self, restriction: dict) -> datetime:
+        """Return the rotation start_date with time overridden by the restriction."""
+        return self.start_date.replace(
+            hour=restriction["startHour"],
+            minute=restriction["startMin"],
+            second=0,
+            microsecond=0,
+        )
 
-        return shift
+    def _build_time_of_day_shift(
+        self, user_id_map: Dict[str, str], restriction: dict
+    ) -> dict:
+        """Shift for a time-of-day restriction (same hours every day)."""
+        base_duration = self._base_duration()
+        frequency, interval = duration_to_frequency_and_interval(base_duration)
+        duration = calc_restriction_duration_seconds(restriction)
+
+        shift = {
+            "name": self.name or uuid4().hex,
+            "type": "rolling_users",
+            "time_zone": "UTC",
+            "team_id": None,
+            "level": 1,
+            "start": dt_to_oncall_datetime(self._restricted_start(restriction)),
+            "duration": duration,
+            "frequency": frequency,
+            "interval": interval,
+            "rolling_users": self._rolling_users(user_id_map),
+            "start_rotation_from_user_index": 0,
+            "week_start": "MO",
+            "source": ONCALL_SHIFT_WEB_SOURCE,
+        }
+        return self._apply_common_fields(shift)
+
+    def _build_weekday_time_shift(
+        self, user_id_map: Dict[str, str], restriction: dict, suffix: str = ""
+    ) -> dict:
+        """Shift for a weekday-and-time-of-day restriction window."""
+        by_day = expand_day_range(restriction["startDay"], restriction["endDay"])
+        duration = calc_restriction_duration_seconds(restriction)
+
+        if self.type == "weekly":
+            interval = self.length
+        else:
+            interval = 1
+
+        name = self.name or uuid4().hex
+        if suffix:
+            name = f"{name}{suffix}"
+
+        shift = {
+            "name": name,
+            "type": "rolling_users",
+            "time_zone": "UTC",
+            "team_id": None,
+            "level": 1,
+            "start": dt_to_oncall_datetime(self._restricted_start(restriction)),
+            "duration": duration,
+            "frequency": "weekly",
+            "interval": interval,
+            "by_day": by_day,
+            "rolling_users": self._rolling_users(user_id_map),
+            "start_rotation_from_user_index": 0,
+            "week_start": "MO",
+            "source": ONCALL_SHIFT_WEB_SOURCE,
+        }
+        return self._apply_common_fields(shift)

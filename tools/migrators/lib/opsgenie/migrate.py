@@ -67,6 +67,14 @@ def migrate() -> None:
     integrations = filter_integrations(integrations)
     oncall_integrations = OnCallAPIClient.list_all("integrations")
 
+    print("▶ Fetching teams...")
+    teams = client.list_teams()
+    team_name_map = {t["id"]: t["name"] for t in teams}
+    for integration in integrations:
+        team_id = integration.get("teamId")
+        if team_id and team_id in team_name_map:
+            integration["teamName"] = team_name_map[team_id]
+
     # Match users with their Grafana OnCall counterparts
     if MIGRATE_USERS:
         print("\n▶ Matching users...")

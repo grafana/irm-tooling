@@ -23,6 +23,9 @@ def format_escalation_policy(policy: dict) -> str:
 
 def format_integration(integration: dict) -> str:
     """Format integration for display in reports."""
+    team_name = integration.get("teamName")
+    if team_name:
+        return f"{integration['name']} ({integration['type']}) [team: {team_name}]"
     return f"{integration['name']} ({integration['type']})"
 
 

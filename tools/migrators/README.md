@@ -598,7 +598,6 @@ Resources that can be migrated using this tool:
 
 - Not all integration types are supported
 - Not all Escalation Policy rule types are supported
-- Opsgenie schedules with time restrictions (time-of-day or weekday-and-time-of-day) are not supported
 - Delays between migrated notification/escalation rules could be slightly different from original
 
 ### Prerequisites
@@ -650,11 +649,19 @@ Schedules are migrated with their rotations. The following features are supporte
 - Daily, weekly, and hourly rotations
 - Multiple rotations per schedule
 - Schedule overrides
+- Time restrictions (`time-of-day` and `weekday-and-time-of-day`)
+
+Time-restricted rotations are mapped to Grafana IRM shifts as follows:
+
+- **`time-of-day`** restrictions adjust the shift start time and duration to match the restricted hours.
+  The rotation frequency (daily, weekly, etc.) is preserved.
+- **`weekday-and-time-of-day`** restrictions set the shift to a weekly frequency with `by_day` filtering.
+  Each restriction window (e.g. Mon–Fri 08:00–17:00) becomes a separate shift. If the original rotation
+  used a non-weekly cadence (e.g. daily), it is converted to weekly.
 
 On-call schedules will be migrated to new Grafana IRM schedules with the same name as in Opsgenie.
 Any existing schedules with the same name will be deleted before migration.
-Any on-call schedules that reference unmatched users won't be migrated. Any Opsgenie schedule which
-uses time restrictions will not be migrated as migrating these is not supported.
+Any on-call schedules that reference unmatched users won't be migrated.
 
 #### Escalation policies
 
@@ -675,6 +682,10 @@ be done manually
 
 The tool is capable of migrating integrations from Opsgenie to Grafana IRM.
 For every integration in Opsgenie, the tool will migrate it to a Grafana IRM integration.
+
+The migration report includes the owning team name alongside each integration (e.g.
+`Email (Email) [team: team-c]`), making it easier to inventory which teams have unsupported
+integrations.
 
 Any integrations with unsupported type won't be migrated unless `UNSUPPORTED_INTEGRATION_TO_WEBHOOKS` is set to `true`.
 
