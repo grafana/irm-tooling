@@ -7,6 +7,7 @@ Currently the migration tool supports migrating from:
 - PagerDuty
 - Splunk OnCall (VictorOps)
 - Opsgenie
+- Grafana OnCall OSS
 
 ## Getting Started
 
@@ -17,6 +18,7 @@ Currently the migration tool supports migrating from:
    - [PagerDuty](#prerequisites)
    - [Splunk OnCall](#prerequisites-1)
    - [Opsgenie](#prerequisites-2)
+   - [Grafana OnCall OSS](#grafana-oncall-oss)
 5. Run a [migration plan](#migration-plan)
 6. If you are pleased with the results of the migration plan, run the tool in [migrate mode](#migration)
 
@@ -58,6 +60,19 @@ docker run --rm \
 -e ONCALL_API_URL="<ONCALL_API_URL>" \
 -e ONCALL_API_TOKEN="<ONCALL_API_TOKEN>" \
 -e OPSGENIE_API_KEY="<OPSGENIE_API_KEY>" \
+oncall-migrator
+```
+
+#### Grafana OnCall OSS
+
+```shell
+docker run --rm \
+-e MIGRATING_FROM="oncall_oss" \
+-e MODE="plan" \
+-e ONCALL_API_URL="<ONCALL_IRM_API_URL>" \
+-e ONCALL_API_TOKEN="<ONCALL_IRM_API_TOKEN>" \
+-e ONCALL_OSS_API_URL="<ONCALL_OSS_INSTANCE_URL>" \
+-e ONCALL_OSS_API_TOKEN="<ONCALL_OSS_API_TOKEN>" \
 oncall-migrator
 ```
 
@@ -127,6 +142,19 @@ docker run --rm \
 -e ONCALL_API_URL="<ONCALL_API_URL>" \
 -e ONCALL_API_TOKEN="<ONCALL_API_TOKEN>" \
 -e OPSGENIE_API_KEY="<OPSGENIE_API_KEY>" \
+oncall-migrator
+```
+
+#### Grafana OnCall OSS
+
+```shell
+docker run --rm \
+-e MIGRATING_FROM="oncall_oss" \
+-e MODE="migrate" \
+-e ONCALL_API_URL="<ONCALL_IRM_API_URL>" \
+-e ONCALL_API_TOKEN="<ONCALL_IRM_API_TOKEN>" \
+-e ONCALL_OSS_API_URL="<ONCALL_OSS_INSTANCE_URL>" \
+-e ONCALL_OSS_API_TOKEN="<ONCALL_OSS_API_TOKEN>" \
 oncall-migrator
 ```
 
@@ -713,6 +741,62 @@ The following integration types are supported:
 - Connect integrations (press the "How to connect" button on the integration page)
 - Make sure users connect their phone numbers, Slack accounts, etc. in their user settings
 - Review and adjust any webhook integrations that were migrated from unsupported Opsgenie integration types
+
+## Grafana OnCall OSS
+
+### Overview
+
+Migrate from a self-managed Grafana OnCall OSS instance to Grafana Cloud IRM. Source and target use the same OnCall API format, so the tool copies resources and remaps IDs (users, schedules, escalation chains, integrations) rather than converting between different data models.
+
+Resources that can be migrated:
+
+- User notification rules (optional, gated by `MIGRATE_USERS`)
+- Escalation chains and escalation policy steps
+- On-call schedules and on-call shifts
+- Integrations and routes
+
+Users are matched by email; they are not created. Ensure users exist in the target Grafana/IRM instance before migrating.
+
+### Prerequisites
+
+- Admin access to the OnCall OSS instance to obtain an API token (Settings in OnCall).
+- Grafana Cloud IRM API URL and token (Settings in the IRM plugin).
+
+### Configuration
+
+| Name | Description | Type | Default |
+| ---- | ----------- | ---- | ------- |
+| `MIGRATING_FROM` | Set to `oncall_oss` | String | N/A |
+| `ONCALL_OSS_API_URL` | Base URL of the OnCall OSS instance (e.g. `http://localhost:8080`). | String | N/A |
+| `ONCALL_OSS_API_TOKEN` | API token from the OnCall OSS instance. | String | N/A |
+| `ONCALL_API_URL` | Grafana Cloud IRM API URL (target). | String | N/A |
+| `ONCALL_API_TOKEN` | Grafana Cloud IRM API token (target). | String | N/A |
+| `MODE` | Migration mode: `plan` or `migrate`. | String | `plan` |
+| `MIGRATE_USERS` | If `true`, match users by email and migrate personal notification rules. If `false`, skip user matching and notification rules. | Boolean | `true` |
+| `PRESERVE_EXISTING_USER_NOTIFICATION_RULES` | When migrating users, if `true` do not overwrite existing notification rules in the target. | Boolean | `true` |
+
+### Resources
+
+#### Users
+
+Users are not created; they are matched by email (username) between OSS and target IRM. Users that do not exist in the target will appear in the report and will not have notification rules migrated; schedules and escalation steps that reference them will still be migrated but those steps may be skipped if they reference only unmapped users.
+
+#### Escalation chains and policies
+
+Escalation chains are matched by name (case-insensitive). Existing chains with the same name in the target will be replaced. Policy steps are copied with user IDs and schedule IDs remapped to target IDs. Steps that reference users or schedules not present in the target are skipped.
+
+#### Schedules and shifts
+
+Schedules are matched by name. Existing schedules with the same name in the target will be replaced. On-call shifts are copied with user IDs remapped. Shifts that reference users not in the target are skipped.
+
+#### Integrations and routes
+
+Integrations are matched by name. The default route is updated with the remapped escalation chain ID; additional routes are created with remapped integration and escalation chain IDs.
+
+### After migration
+
+- Update alert sources to use the new Grafana Cloud IRM integration URLs.
+- Ensure users have connected their notification channels in the target IRM.
 
 ## Migrating Users
 
