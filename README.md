@@ -20,6 +20,9 @@ Docker-based tools to migrate your existing on-call setup to Grafana IRM from:
 - **PagerDuty** — schedules, escalation policies, services, notification rules, and event rulesets
 - **Splunk OnCall (VictorOps)** — schedules, escalation policies, and paging policies
 - **Opsgenie** — schedules, escalation policies, integrations, and notification rules
+- **Grafana OnCall OSS** — escalation chains, schedules, integrations, routes, and notification rules
+
+See [tools/migrators/README.md](./tools/migrators/README.md) for detailed setup, configuration, and provider-specific docs.
 
 ### [Utility Scripts](./tools/scripts/)
 
