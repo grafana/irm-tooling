@@ -25,8 +25,12 @@ def _remap_policy_step(
     new_chain_id: str,
     user_id_map: Dict[str, str],
     schedule_id_map: Dict[str, str],
-) -> dict:
-    """Build create payload for one escalation policy step with IDs remapped."""
+) -> dict | None:
+    """Build create payload for one escalation policy step with IDs remapped.
+
+    Returns None when the step references users or schedules that cannot be
+    remapped (e.g. not in user_id_map or schedule_id_map).
+    """
     payload = {
         "escalation_chain_id": new_chain_id,
         "position": step.get("position", 0),

@@ -61,17 +61,23 @@ def migrate() -> None:
     for p in all_policies:
         policies_by_chain[p["escalation_chain_id"]].append(p)
 
-    print("▶ Fetching schedules from OSS...")
+    print("▶ Fetching schedules and shifts from OSS...")
     schedules = source.list_schedules()
-    shifts_by_schedule = {}
-    for s in schedules:
-        shifts_by_schedule[s["id"]] = source.list_on_call_shifts(s["id"])
+    all_shifts = source.list_on_call_shifts()
+    shifts_by_schedule = defaultdict(list)
+    for shift in all_shifts:
+        sid = shift.get("schedule_id")
+        if sid is not None:
+            shifts_by_schedule[sid].append(shift)
 
-    print("▶ Fetching integrations from OSS...")
+    print("▶ Fetching integrations and routes from OSS...")
     integrations = source.list_integrations()
-    routes_by_integration = {}
-    for i in integrations:
-        routes_by_integration[i["id"]] = source.list_routes(i["id"])
+    all_routes = source.list_routes()
+    routes_by_integration = defaultdict(list)
+    for route in all_routes:
+        iid = route.get("integration_id")
+        if iid is not None:
+            routes_by_integration[iid].append(route)
 
     print("▶ Fetching target resources...")
     oncall_chains = OnCallAPIClient.list_all("escalation_chains")

@@ -772,7 +772,7 @@ Users are matched by email; they are not created. Ensure users exist in the targ
 | `ONCALL_API_URL` | Grafana Cloud IRM API URL (target). | String | N/A |
 | `ONCALL_API_TOKEN` | Grafana Cloud IRM API token (target). | String | N/A |
 | `MODE` | Migration mode: `plan` or `migrate`. | String | `plan` |
-| `MIGRATE_USERS` | If `true`, match users by email and migrate personal notification rules. If `false`, skip user matching and notification rules. | Boolean | `true` |
+| `MIGRATE_USERS` | If `true`, match users by email and migrate personal notification rules. If `false`, skip user matching and notification rules. **Note:** When `false`, no user ID mapping is built, so schedule shifts and escalation policy steps that reference users will be skipped (unmapped user IDs cannot be remapped). This can result in empty or partial schedules and escalation chains. | Boolean | `true` |
 | `PRESERVE_EXISTING_USER_NOTIFICATION_RULES` | When migrating users, if `true` do not overwrite existing notification rules in the target. | Boolean | `true` |
 
 ### Resources

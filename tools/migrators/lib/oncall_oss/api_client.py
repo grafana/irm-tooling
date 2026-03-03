@@ -60,8 +60,11 @@ class OnCallSourceClient:
     def list_integrations(self) -> list[dict]:
         return self.list_all("integrations")
 
-    def list_routes(self, integration_id: str) -> list[dict]:
-        return self.list_all(f"routes/?integration_id={integration_id}")
+    def list_routes(self, integration_id: str | None = None) -> list[dict]:
+        """List routes, optionally filtered by integration_id."""
+        if integration_id is not None:
+            return self.list_all(f"routes/?integration_id={integration_id}")
+        return self.list_all("routes")
 
     def list_users(self) -> list[dict]:
         return self.list_all("users")
@@ -73,8 +76,11 @@ class OnCallSourceClient:
         """Return users with their personal_notification_rules attached."""
         users = self.list_users()
         rules = self.list_personal_notification_rules()
+        rules_by_user: dict[str, list[dict]] = {}
+        for r in rules:
+            uid = r.get("user_id")
+            if uid is not None:
+                rules_by_user.setdefault(uid, []).append(r)
         for user in users:
-            user["notification_rules"] = [
-                r for r in rules if r.get("user_id") == user["id"]
-            ]
+            user["notification_rules"] = rules_by_user.get(user["id"], [])
         return users
