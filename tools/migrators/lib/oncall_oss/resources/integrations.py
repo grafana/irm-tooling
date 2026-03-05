@@ -67,8 +67,8 @@ def migrate_integration(
         route_payload = {
             "integration_id": new_integration_id,
             "escalation_chain_id": chain_id_map[old_chain_id],
-            "routing_type": route.get("routing_type") or "regex",
-            "routing_regex": route.get("routing_regex") or ".*",
+            "routing_type": route.get("routing_type") or "jinja2",
+            "routing_regex": route.get("routing_regex") or "{{ true }}",
             "position": route.get("position", 0),
         }
         OnCallAPIClient.create("routes", route_payload)

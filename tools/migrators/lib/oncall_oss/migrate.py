@@ -8,7 +8,6 @@ from collections import defaultdict
 from lib.common.report import TAB
 from lib.common.resources.users import match_user
 from lib.oncall.api_client import OnCallAPIClient
-from lib.oncall_oss.api_client import OnCallSourceClient
 from lib.oncall_oss.config import (
     MIGRATE_USERS,
     MODE,
@@ -42,7 +41,7 @@ from lib.oncall_oss.resources.schedules import (
 
 
 def migrate() -> None:
-    source = OnCallSourceClient(ONCALL_OSS_API_URL, ONCALL_OSS_API_TOKEN)
+    source = OnCallAPIClient(ONCALL_OSS_API_URL, ONCALL_OSS_API_TOKEN, "oncall_oss")
 
     if MIGRATE_USERS:
         print("▶ Fetching users from OSS...")

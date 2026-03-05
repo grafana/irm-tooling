@@ -51,7 +51,7 @@ def test_migrate_integration(mock_client):
         {
             "integration_id": "oi_new",
             "escalation_chain_id": "oc2",
-            "routing_type": "regex",
+            "routing_type": "jinja2",
             "routing_regex": ".*critical.*",
             "position": 1,
         },
