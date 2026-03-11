@@ -7,6 +7,7 @@ Currently the migration tool supports migrating from:
 - PagerDuty
 - Splunk OnCall (VictorOps)
 - Opsgenie
+- Grafana OnCall OSS
 
 ## Getting Started
 
@@ -17,6 +18,7 @@ Currently the migration tool supports migrating from:
    - [PagerDuty](#prerequisites)
    - [Splunk OnCall](#prerequisites-1)
    - [Opsgenie](#prerequisites-2)
+   - [Grafana OnCall OSS](#grafana-oncall-oss)
 5. Run a [migration plan](#migration-plan)
 6. If you are pleased with the results of the migration plan, run the tool in [migrate mode](#migration)
 
@@ -58,6 +60,19 @@ docker run --rm \
 -e ONCALL_API_URL="<ONCALL_API_URL>" \
 -e ONCALL_API_TOKEN="<ONCALL_API_TOKEN>" \
 -e OPSGENIE_API_KEY="<OPSGENIE_API_KEY>" \
+oncall-migrator
+```
+
+#### Grafana OnCall OSS
+
+```shell
+docker run --rm \
+-e MIGRATING_FROM="oncall_oss" \
+-e MODE="plan" \
+-e ONCALL_API_URL="<ONCALL_IRM_API_URL>" \
+-e ONCALL_API_TOKEN="<ONCALL_IRM_API_TOKEN>" \
+-e ONCALL_OSS_API_URL="<ONCALL_OSS_INSTANCE_URL>" \
+-e ONCALL_OSS_API_TOKEN="<ONCALL_OSS_API_TOKEN>" \
 oncall-migrator
 ```
 
@@ -127,6 +142,19 @@ docker run --rm \
 -e ONCALL_API_URL="<ONCALL_API_URL>" \
 -e ONCALL_API_TOKEN="<ONCALL_API_TOKEN>" \
 -e OPSGENIE_API_KEY="<OPSGENIE_API_KEY>" \
+oncall-migrator
+```
+
+#### Grafana OnCall OSS
+
+```shell
+docker run --rm \
+-e MIGRATING_FROM="oncall_oss" \
+-e MODE="migrate" \
+-e ONCALL_API_URL="<ONCALL_IRM_API_URL>" \
+-e ONCALL_API_TOKEN="<ONCALL_IRM_API_TOKEN>" \
+-e ONCALL_OSS_API_URL="<ONCALL_OSS_INSTANCE_URL>" \
+-e ONCALL_OSS_API_TOKEN="<ONCALL_OSS_API_TOKEN>" \
 oncall-migrator
 ```
 
@@ -713,6 +741,121 @@ The following integration types are supported:
 - Connect integrations (press the "How to connect" button on the integration page)
 - Make sure users connect their phone numbers, Slack accounts, etc. in their user settings
 - Review and adjust any webhook integrations that were migrated from unsupported Opsgenie integration types
+
+## Grafana OnCall OSS
+
+### Overview
+
+Migrate from a self-managed Grafana OnCall OSS instance to Grafana Cloud IRM. Source and target use the same OnCall API format, so the tool copies resources and remaps IDs (users, schedules, escalation chains, integrations) rather than converting between different data models.
+
+Resources that can be migrated:
+
+- User notification rules (optional, gated by `MIGRATE_USERS`)
+- Escalation chains and escalation policy steps
+- On-call schedules and on-call shifts
+- Integrations and routes (including direct paging, when matching team exists in target)
+- Outgoing webhooks
+
+### Limitations
+
+- **Users cannot be created.** Users are matched between source and target by email or username (case-insensitive). The OnCall API does not support user creation — users must be provisioned in the target Grafana instance (via SSO, LDAP, manual invite, etc.) before running the migration. Unmatched users are reported and their notification rules are skipped.
+- **Teams are not migrated.** The OnCall API does not support team creation. If your OSS instance uses teams, ensure the same teams exist in the target before migrating. This is required for direct paging integrations (see below).
+- **Direct paging integrations cannot be created.** Direct paging integrations are system-managed and auto-created per team by OnCall. The API rejects attempts to create them. If a matching direct paging integration already exists in the target (because the team was created there), the migrator will update its routes. If no match exists, the integration is skipped with a message to create the team first.
+- **Partial user coverage.** When a schedule shift or escalation step references a mix of matched and unmatched users, the migrator keeps the matched users and drops the unmatched ones. This means a shift originally rotating between 3 users may only rotate between 2 in the target. Shifts or steps where *all* referenced users are unmatched are skipped entirely.
+- **Preset outgoing webhooks are migrated as custom webhooks.** The OnCall API does not allow creating preset webhooks via API, so preset webhooks (e.g. "Simple Webhook") are migrated as custom webhooks. The URL, HTTP method, headers, and other configuration are preserved.
+
+### Prerequisites
+
+- Admin access to the OnCall OSS instance to obtain an API token (Settings in OnCall).
+- Grafana Cloud IRM API URL and token (Settings in the IRM plugin).
+- All users that should be migrated must exist in the target Grafana instance.
+- All teams that should be migrated (especially those with direct paging integrations) must exist in the target.
+
+### Configuration
+
+| Name | Description | Type | Default |
+| ---- | ----------- | ---- | ------- |
+| `MIGRATING_FROM` | Set to `oncall_oss` | String | N/A |
+| `ONCALL_OSS_API_URL` | Base URL of the OnCall OSS instance (e.g. `http://localhost:8080`). | String | N/A |
+| `ONCALL_OSS_API_TOKEN` | API token from the OnCall OSS instance. | String | N/A |
+| `ONCALL_API_URL` | Grafana Cloud IRM API URL (target). | String | N/A |
+| `ONCALL_API_TOKEN` | Grafana Cloud IRM API token (target). | String | N/A |
+| `MODE` | Migration mode: `plan` or `migrate`. | String | `plan` |
+| `MIGRATE_USERS` | If `true`, match users and migrate personal notification rules. If `false`, skip notification rule migration. **Note:** When `false`, no user ID mapping is built, so schedule shifts and escalation policy steps that reference users will be skipped (unmapped user IDs cannot be remapped). This can result in empty or partial schedules and escalation chains. | Boolean | `true` |
+| `PRESERVE_EXISTING_USER_NOTIFICATION_RULES` | When migrating users, if `true` do not overwrite existing notification rules in the target. | Boolean | `true` |
+
+### Resources
+
+#### Users
+
+Users are **not created** by the migrator. They are matched between the source OSS instance and the target IRM instance by **email or username** (case-insensitive). A user matches if either their email or username in the source corresponds to the email or username of a user in the target.
+
+Unmatched users are reported with ❌ in the plan. Their notification rules will not be migrated. Schedule shifts and escalation policy steps that reference only unmatched users will be skipped. Steps that reference a mix of matched and unmatched users will keep the matched users and drop the unmatched ones.
+
+To ensure all users are migrated, provision them in the target Grafana instance before running the migration (e.g. invite via email, configure SSO/LDAP, or have them log in to the Grafana instance).
+
+#### Escalation chains and policies
+
+Escalation chains are matched by name (case-insensitive). Existing chains with the same name in the target will be replaced. Policy steps are copied with user IDs and schedule IDs remapped to target IDs. Steps that reference only unmatched users or schedules are skipped; steps with partial coverage keep the matched references.
+
+#### Schedules and shifts
+
+Schedules are matched by name (case-insensitive). Existing schedules with the same name in the target will be replaced. On-call shifts are copied with user IDs remapped. For `rolling_users` shifts, individual rotation slots with no matched users are dropped, but the shift is preserved if at least one slot has matched users.
+
+#### Integrations and routes
+
+Integrations are matched by name (case-insensitive). For regular integrations, existing ones with the same name in the target will be replaced. The default route's escalation chain is updated; additional routes are created with remapped escalation chain IDs.
+
+**Direct paging integrations** are system-managed and cannot be created via the API. If a matching direct paging integration exists in the target (same name), the migrator updates its routes. If no match exists, it is skipped with an actionable message: create the corresponding team in the target first, then rerun.
+
+#### Outgoing webhooks
+
+Outgoing webhooks are matched by name (case-insensitive). Existing webhooks with the same name in the target will be replaced. The webhook URL, HTTP method, headers, trigger type, and other configuration are copied. Preset webhooks (e.g. "Simple Webhook") are migrated as custom webhooks since the API does not support creating presets.
+
+### After migration
+
+- Update alert sources to use the new Grafana Cloud IRM integration URLs.
+- Ensure users have connected their notification channels (phone, Slack, etc.) in the target IRM.
+- If any direct paging integrations were skipped, create the corresponding teams in the target and rerun the migration.
+- Review migrated schedules and escalation chains for partial user coverage if some users were unmatched.
+
+### Verifying the OnCall OSS migration
+
+To verify the migration script against a real OnCall OSS instance:
+
+1. **Start OnCall OSS** using the official Docker Compose setup from [grafana/oncall](https://github.com/grafana/oncall). Follow the repository's getting started guide to bring up the engine, Redis, Celery, and Grafana.
+
+2. **Provision the OnCall plugin in Grafana** (one-time):
+
+   ```bash
+   curl -X POST 'http://admin:admin@localhost:3000/api/plugins/grafana-oncall-app/settings' \
+     -H 'Content-Type: application/json' \
+     -d '{"enabled":true, "jsonData":{"stackId":5, "orgId":100, "onCallApiUrl":"http://engine:8080", "grafanaUrl":"http://grafana:3000"}}'
+   curl -X POST 'http://admin:admin@localhost:3000/api/plugins/grafana-oncall-app/resources/plugin/install'
+   ```
+
+3. **Create an API token**: Open http://localhost:3000, log in as `admin`/`admin`, open OnCall from the sidebar, go to **Settings** and create an API token. Then:
+
+   ```bash
+   export ONCALL_OSS_API_URL=http://localhost:8080
+   export ONCALL_OSS_API_TOKEN=<your_token>
+   ```
+
+4. **Create sample data** in the OnCall OSS UI (teams, users, escalation chains, schedules, integrations, outgoing webhooks) to have resources to migrate.
+
+5. **Run the migrator in plan mode**. You need a **target** (e.g. Grafana Cloud IRM or another OnCall instance). Set `ONCALL_API_URL` and `ONCALL_API_TOKEN` for the target, then:
+
+   ```bash
+   cd tools/migrators
+   MIGRATING_FROM=oncall_oss MODE=plan \
+     ONCALL_OSS_API_URL=http://localhost:8080 ONCALL_OSS_API_TOKEN=$ONCALL_OSS_API_TOKEN \
+     ONCALL_API_URL=<target_url> ONCALL_API_TOKEN=<target_token> \
+     python main.py
+   ```
+
+   If the target is Grafana Cloud IRM, use its API URL and token from the IRM Settings page. To run the actual migration, set `MODE=migrate`.
+
+**Note:** If you run the migrator inside Docker, use `http://host.docker.internal:8080` (Mac/Windows) or your host IP instead of `localhost` for `ONCALL_OSS_API_URL` so the container can reach the OSS instance.
 
 ## Migrating Users
 

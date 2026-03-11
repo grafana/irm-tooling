@@ -4,8 +4,9 @@ from urllib.parse import urljoin
 PAGERDUTY = "pagerduty"
 SPLUNK = "splunk"
 OPSGENIE = "opsgenie"
+ONCALL_OSS = "oncall_oss"
 MIGRATING_FROM = os.getenv("MIGRATING_FROM")
-assert MIGRATING_FROM in (PAGERDUTY, SPLUNK, OPSGENIE)
+assert MIGRATING_FROM in (PAGERDUTY, SPLUNK, OPSGENIE, ONCALL_OSS)
 
 MODE_PLAN = "plan"
 MODE_MIGRATE = "migrate"
