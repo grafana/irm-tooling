@@ -115,6 +115,9 @@ class OnCallAPIClient:
             return self._list_all(f"routes/?integration_id={integration_id}")
         return self._list_all("routes")
 
+    def list_webhooks(self) -> list[dict]:
+        return self._list_all("webhooks")
+
     @classmethod
     def _get_default(cls) -> "OnCallAPIClient":
         if cls._default_instance is None:

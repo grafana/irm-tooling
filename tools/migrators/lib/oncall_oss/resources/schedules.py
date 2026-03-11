@@ -7,6 +7,15 @@ from typing import Dict, List
 
 from lib.oncall.api_client import OnCallAPIClient
 
+SHIFT_WRITABLE_FIELDS = {
+    "name", "type", "team_id", "time_zone", "level",
+    "start", "duration", "rotation_start",
+    "frequency", "interval", "until",
+    "by_day", "by_month", "by_monthday",
+    "rolling_users", "users", "start_rotation_from_user_index",
+    "week_start", "source",
+}
+
 
 def match_schedule(schedule: dict, oncall_schedules: List[dict]) -> None:
     """Match OSS schedule to target schedule by name (case-insensitive)."""
@@ -21,21 +30,22 @@ def match_schedule(schedule: dict, oncall_schedules: List[dict]) -> None:
 
 
 def _remap_shift(shift: dict, user_id_map: Dict[str, str]) -> dict | None:
-    """Build create payload for one shift with user IDs remapped. Returns None if unmapped users."""
-    payload = {k: v for k, v in shift.items() if k not in ("id", "schedule_id")}
+    """Build create payload for one shift with user IDs remapped.
 
-    if shift.get("type") == "override" and "users" in shift:
-        new_users = [user_id_map[uid] for uid in shift["users"] if uid in user_id_map]
-        if not new_users:
-            return None
-        payload["users"] = new_users
-    elif "rolling_users" in shift:
+    Returns None only when the shift has zero usable users after remapping.
+    Partial coverage is preserved: slots/users that can't be remapped are
+    dropped but the shift is kept if at least one user remains.
+    """
+    payload = {k: v for k, v in shift.items() if k in SHIFT_WRITABLE_FIELDS}
+
+    if "rolling_users" in shift:
         new_rolling = []
         for slot in shift["rolling_users"]:
             new_slot = [user_id_map[uid] for uid in slot if uid in user_id_map]
-            if not new_slot:
-                return None
-            new_rolling.append(new_slot)
+            if new_slot:
+                new_rolling.append(new_slot)
+        if not new_rolling:
+            return None
         payload["rolling_users"] = new_rolling
     elif "users" in shift:
         new_users = [user_id_map[uid] for uid in shift["users"] if uid in user_id_map]

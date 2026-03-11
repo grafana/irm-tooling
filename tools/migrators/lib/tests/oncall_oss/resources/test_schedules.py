@@ -38,6 +38,21 @@ def test_remap_shift_rolling_users():
     assert payload["rolling_users"] == [["ou1"], ["ou2"]]
 
 
+def test_remap_shift_partial_rolling_users_keeps_mapped_slots():
+    """Shift with mixed mapped/unmapped slots should keep the mapped ones."""
+    shift = {
+        "id": "sh1",
+        "schedule_id": "s1",
+        "type": "rolling_users",
+        "rolling_users": [["u1"], ["u2"]],
+        "name": "[L1] Rotation",
+        "duration": 86400,
+    }
+    payload = _remap_shift(shift, {"u1": "ou1"})
+    assert payload is not None
+    assert payload["rolling_users"] == [["ou1"]]
+
+
 def test_remap_shift_override_users():
     shift = {"id": "sh1", "type": "override", "users": ["u1"]}
     payload = _remap_shift(shift, {"u1": "ou1"})
@@ -48,6 +63,27 @@ def test_remap_shift_unmapped_user_returns_none():
     shift = {"type": "override", "users": ["u1"]}
     payload = _remap_shift(shift, {})
     assert payload is None
+
+
+def test_remap_shift_strips_readonly_fields():
+    shift = {
+        "id": "sh1",
+        "schedule_id": "s1",
+        "type": "rolling_users",
+        "rolling_users": [["u1"]],
+        "name": "Test",
+        "duration": 86400,
+        "start": "2024-01-01T00:00:00",
+        "updated_shift_at": "2024-06-01",
+        "some_unknown_field": "value",
+    }
+    payload = _remap_shift(shift, {"u1": "ou1"})
+    assert "id" not in payload
+    assert "schedule_id" not in payload
+    assert "updated_shift_at" not in payload
+    assert "some_unknown_field" not in payload
+    assert payload["name"] == "Test"
+    assert payload["duration"] == 86400
 
 
 @patch("lib.oncall_oss.resources.schedules.OnCallAPIClient")
