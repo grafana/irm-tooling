@@ -3,7 +3,6 @@ from typing import List
 
 from lib.jsm.config import JSM_FILTER_ESCALATION_REGEX, JSM_FILTER_TEAM
 from lib.opsgenie.resources.escalation_policies import (
-    determine_policy_name,
     match_escalation_policy,
     match_users_and_schedules_for_escalation_policy,
     migrate_escalation_policy,
@@ -17,7 +16,7 @@ def filter_escalations(escalations: list[dict]) -> list[dict]:
     if JSM_FILTER_ESCALATION_REGEX:
         pattern = re.compile(JSM_FILTER_ESCALATION_REGEX)
         escalations = [
-            e for e in escalations if pattern.match(determine_policy_name(e))
+            e for e in escalations if pattern.match(e.get("name", ""))
         ]
 
     return escalations

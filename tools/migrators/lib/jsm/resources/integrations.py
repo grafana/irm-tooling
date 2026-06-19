@@ -54,7 +54,18 @@ def link_escalation_to_integration(
             break
 
 
-def migrate_integration(integration: dict) -> None:
+def _link_integration_route_to_escalation_chain(
+    integration_id: str, escalation_chain_id: str
+) -> None:
+    routes = OnCallAPIClient.list_all(f"routes/?integration_id={integration_id}")
+    default_route_id = routes[0]["id"]
+    OnCallAPIClient.update(
+        f"routes/{default_route_id}",
+        {"escalation_chain_id": escalation_chain_id},
+    )
+
+
+def migrate_integration(integration: dict, escalations: List[dict]) -> None:
     if integration.get("oncall_integration"):
         OnCallAPIClient.delete(
             f"integrations/{integration['oncall_integration']['id']}"
@@ -66,7 +77,11 @@ def migrate_integration(integration: dict) -> None:
         "team_id": None,
     }
 
-    if integration.get("oncall_escalation_chain"):
-        payload["escalation_chain_id"] = integration["oncall_escalation_chain"]["id"]
-
     integration["oncall_integration"] = OnCallAPIClient.create("integrations", payload)
+
+    link_escalation_to_integration(integration, escalations)
+    if integration.get("oncall_escalation_chain"):
+        _link_integration_route_to_escalation_chain(
+            integration["oncall_integration"]["id"],
+            integration["oncall_escalation_chain"]["id"],
+        )

@@ -19,7 +19,6 @@ from lib.jsm.resources.escalation_chains import (
 )
 from lib.jsm.resources.integrations import (
     filter_integrations,
-    link_escalation_to_integration,
     match_integration,
     migrate_integration,
 )
@@ -99,7 +98,6 @@ def migrate() -> None:
     print("\n▶ Matching integrations...")
     for integration in integrations:
         match_integration(integration, oncall_integrations)
-        link_escalation_to_integration(integration, escalations)
     print(integration_report(integrations))
 
     if MODE == MODE_PLAN:
@@ -142,4 +140,4 @@ def migrate() -> None:
                 "and UNSUPPORTED_INTEGRATION_TO_WEBHOOKS is false"
             )
             continue
-        migrate_integration(integration)
+        migrate_integration(integration, escalations)

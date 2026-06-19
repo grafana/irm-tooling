@@ -161,19 +161,22 @@ class JsmAPIClient:
             if rule.get("actionType") != "create-alert":
                 continue
             steps = rule.get("steps", [])
+            email = None
             for step in steps:
                 contact = step.get("contact", {})
-                email = contact.get("to")
-                if email:
-                    matched = next(
-                        (u for u in users_by_id.values() if u.get("email") == email),
-                        None,
-                    )
-                    if matched:
-                        matched["notification_rules"] = steps
-                    else:
-                        user = ensure_user(email, email=email)
-                        user["notification_rules"] = steps
+                if contact.get("to"):
+                    email = contact["to"]
                     break
+            if not email:
+                continue
+            matched = next(
+                (u for u in users_by_id.values() if u.get("email") == email),
+                None,
+            )
+            if matched:
+                matched["notification_rules"].extend(steps)
+            else:
+                user = ensure_user(email, email=email)
+                user["notification_rules"].extend(steps)
 
         return list(users_by_id.values())
