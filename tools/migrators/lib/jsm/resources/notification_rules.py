@@ -43,8 +43,6 @@ def transform_notification_rules(
             continue
 
         time_amount = step.get("sendAfter", 0)
-        if isinstance(time_amount, dict):
-            time_amount = time_amount.get("timeAmount", 0)
 
         if time_amount > 0:
             oncall_rules.append(

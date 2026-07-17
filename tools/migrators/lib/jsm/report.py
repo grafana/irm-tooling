@@ -83,7 +83,14 @@ def schedule_report(schedules: list[dict]) -> str:
 def escalation_report(escalations: list[dict]) -> str:
     report = ["Escalation policy report:"]
     for escalation in escalations:
-        if escalation.get("oncall_escalation_chain"):
+        policy = escalation.get("_normalized_policy", escalation)
+        if all(
+            rule.get("notifyType") != "default" for rule in policy.get("rules", [])
+        ):
+            report.append(
+                f"{TAB}{WARNING_SIGN} {format_escalation(escalation)} — will be skipped (all rules have a non-default notifyType)"
+            )
+        elif escalation.get("oncall_escalation_chain"):
             report.append(
                 f"{TAB}{WARNING_SIGN} {format_escalation(escalation)} (existing escalation chain will be deleted)"
             )
