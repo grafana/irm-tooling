@@ -7,6 +7,7 @@ Currently the migration tool supports migrating from:
 - PagerDuty
 - Splunk OnCall (VictorOps)
 - Opsgenie
+- Jira Service Management (JSM) Operations
 - Grafana OnCall OSS
 
 ## Getting Started
@@ -18,6 +19,7 @@ Currently the migration tool supports migrating from:
    - [PagerDuty](#prerequisites)
    - [Splunk OnCall](#prerequisites-1)
    - [Opsgenie](#prerequisites-2)
+   - [Jira Service Management (JSM)](#jira-service-management-jsm)
    - [Grafana OnCall OSS](#grafana-oncall-oss)
 5. Run a [migration plan](#migration-plan)
 6. If you are pleased with the results of the migration plan, run the tool in [migrate mode](#migration)
@@ -73,6 +75,20 @@ docker run --rm \
 -e ONCALL_API_TOKEN="<ONCALL_IRM_API_TOKEN>" \
 -e ONCALL_OSS_API_URL="<ONCALL_OSS_INSTANCE_URL>" \
 -e ONCALL_OSS_API_TOKEN="<ONCALL_OSS_API_TOKEN>" \
+oncall-migrator
+```
+
+#### Jira Service Management (JSM)
+
+```shell
+docker run --rm \
+-e MIGRATING_FROM="jsm" \
+-e MODE="plan" \
+-e ONCALL_API_URL="<ONCALL_IRM_API_URL>" \
+-e ONCALL_API_TOKEN="<ONCALL_IRM_API_TOKEN>" \
+-e JSM_EMAIL="<ATLASSIAN_ACCOUNT_EMAIL>" \
+-e JSM_API_TOKEN="<ATLASSIAN_API_TOKEN>" \
+-e JSM_CLOUD_ID="<JSM_CLOUD_ID>" \
 oncall-migrator
 ```
 
@@ -155,6 +171,20 @@ docker run --rm \
 -e ONCALL_API_TOKEN="<ONCALL_IRM_API_TOKEN>" \
 -e ONCALL_OSS_API_URL="<ONCALL_OSS_INSTANCE_URL>" \
 -e ONCALL_OSS_API_TOKEN="<ONCALL_OSS_API_TOKEN>" \
+oncall-migrator
+```
+
+#### Jira Service Management (JSM)
+
+```shell
+docker run --rm \
+-e MIGRATING_FROM="jsm" \
+-e MODE="migrate" \
+-e ONCALL_API_URL="<ONCALL_IRM_API_URL>" \
+-e ONCALL_API_TOKEN="<ONCALL_IRM_API_TOKEN>" \
+-e JSM_EMAIL="<ATLASSIAN_ACCOUNT_EMAIL>" \
+-e JSM_API_TOKEN="<ATLASSIAN_API_TOKEN>" \
+-e JSM_CLOUD_ID="<JSM_CLOUD_ID>" \
 oncall-migrator
 ```
 
@@ -331,7 +361,7 @@ Configuration is done via environment variables passed to the docker container.
 | `PAGERDUTY_API_TOKEN`                         | PagerDuty API **user token**. To create a token, refer to [PagerDuty docs](https://support.pagerduty.com/docs/api-access-keys#generate-a-user-token-rest-api-key).                                                                                                                                                                                                                                                 | String                              | N/A     |
 | `ONCALL_API_URL`                              | Grafana IRM API URL. This can be found on the "Settings" page of your Grafana IRM instance.                                                                                                                                                                                                                                                                                                                  | String                              | N/A     |
 | `ONCALL_API_TOKEN`                            | Grafana IRM API Token. To create a token, navigate to the "Settings" page of your Grafana IRM instance.                                                                                                                                                                                                                                                                                                      | String                              | N/A     |
-| `GRAFANA_SERVICE_ACCOUNT_URL`                            | A URL containing your tenant name (e.g. `stacks-xxx`) and Service Account Token. The URL is of the form `https://<stackid>:<token>@<server>`. e.g. `https://stacks-12345:xxxxxx@my-company.grafana.net/` Your stack id can be found at [grafana.com](https://grafana.com)                                                                                                                                                                      .                                                                                                                                | String                              | N/A     |
+| `GRAFANA_SERVICE_ACCOUNT_URL` | A URL containing your tenant name (e.g. `stacks-xxx`) and service account token, of the form `https://<stackid>:<token>@<server>`. See the [Services and Business Services](#services-and-business-services) section. Your stack id can be found at [grafana.com](https://grafana.com). | String | N/A |
 | `MODE`                                        | Migration mode (plan vs actual migration).                                                                                                                                                                                                                                                                                                                                                                         | String (choices: `plan`, `migrate`) | `plan`  |
 | `SCHEDULE_MIGRATION_MODE`                     | Determines how on-call schedules are migrated.                                                                                                                                                                                                                                                                                                                                                                     | String (choices: `ical`, `web`)     | `ical`  |
 | `UNSUPPORTED_INTEGRATION_TO_WEBHOOKS`         | When set to `true`, integrations with unsupported type will be migrated to Grafana IRM integrations with type "webhook". When set to `false`, integrations with unsupported type won't be migrated.                                                                                                                                                                                                             | Boolean                             | `false` |
@@ -741,6 +771,79 @@ The following integration types are supported:
 - Connect integrations (press the "How to connect" button on the integration page)
 - Make sure users connect their phone numbers, Slack accounts, etc. in their user settings
 - Review and adjust any webhook integrations that were migrated from unsupported Opsgenie integration types
+
+## Jira Service Management (JSM)
+
+### Overview
+
+Migrate from Jira Service Management Operations to Grafana Cloud IRM. JSM Operations is Atlassian's successor to standalone Opsgenie (Opsgenie shuts down April 2027). The JSM Operations REST API covers the same concepts — schedules, escalations, integrations, and notification rules — with a different API structure and authentication.
+
+Resources that can be migrated:
+
+- User notification rules (optional, gated by `MIGRATE_USERS`)
+- On-call schedules (including rotations)
+- Escalation policies
+- Integrations
+
+### Limitations
+
+- **Users cannot be created.** Users are matched by email between JSM and target IRM. The migrator resolves JSM account IDs to emails via the Jira REST API when possible. Users must exist in the target Grafana instance before migration.
+- **Teams are not migrated.** Escalation policies are team-scoped in JSM; the migrator includes the team name in the escalation chain name (`{team} - {escalation}`) but does not create teams in IRM.
+- **Notification rules are limited to the API token owner.** The JSM Operations API lists notification rules for the authenticated user only. Notification rules for other users are not migrated unless their contact email appears in the token owner's rules.
+- **Notification rule conditions and time restrictions are not fully mapped.** Basic notification steps (wait + contact method) are migrated; complex criteria and time restrictions are skipped.
+- **Some integration types may not have a direct IRM equivalent.** Unsupported types can be migrated as webhooks when `UNSUPPORTED_INTEGRATION_TO_WEBHOOKS=true`.
+- **Escalation rules with non-default `notifyType` are skipped.**
+
+### Prerequisites
+
+- A Jira Service Management Cloud instance with Operations enabled.
+- An Atlassian API token: [manage API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+- Your JSM cloud ID (found in Atlassian admin or via `https://<your-site>.atlassian.net/_edge/tenant_info`).
+- Grafana Cloud IRM API URL and token.
+- All users that should be migrated must exist in the target Grafana instance.
+
+### Configuration
+
+| Name | Description | Type | Default |
+| ---- | ----------- | ---- | ------- |
+| `MIGRATING_FROM` | Set to `jsm` | String | N/A |
+| `JSM_EMAIL` | Atlassian account email for API authentication | String | N/A |
+| `JSM_API_TOKEN` | Atlassian API token | String | N/A |
+| `JSM_CLOUD_ID` | JSM cloud instance ID | String | N/A |
+| `ONCALL_API_URL` | Grafana Cloud IRM API URL (target) | String | N/A |
+| `ONCALL_API_TOKEN` | Grafana Cloud IRM API token (target) | String | N/A |
+| `MODE` | Migration mode: `plan` or `migrate` | String | `plan` |
+| `MIGRATE_USERS` | If `true`, match users and migrate notification rules. If `false`, skip notification rules and user ID mapping (schedules/escalations referencing users will be skipped). | Boolean | `true` |
+| `UNSUPPORTED_INTEGRATION_TO_WEBHOOKS` | Migrate unsupported integration types as webhooks | Boolean | `false` |
+| `JSM_FILTER_TEAM` | Filter resources by JSM team ID | String | N/A |
+| `JSM_FILTER_SCHEDULE_REGEX` | Filter schedules by name regex | String | N/A |
+| `JSM_FILTER_ESCALATION_REGEX` | Filter escalations by name regex | String | N/A |
+| `JSM_FILTER_INTEGRATION_REGEX` | Filter integrations by name regex | String | N/A |
+| `PRESERVE_EXISTING_USER_NOTIFICATION_RULES` | Do not overwrite existing notification rules in target | Boolean | `true` |
+
+### Resources
+
+#### Users
+
+Users are not created. They are discovered from schedule participants, escalation recipients, and notification rule contacts, then matched to target IRM users by email. JSM account IDs are resolved to emails via the Jira REST API.
+
+#### Schedules
+
+Schedules are matched by name. Rotations (including time restrictions) are converted to OnCall shifts using the same logic as the Opsgenie migrator. Schedules referencing unmatched users are not migrated.
+
+#### Escalation policies
+
+Escalation policies are team-scoped in JSM. They are migrated to IRM escalation chains named `{team name} - {escalation name}`. Rules with `notifyType=default` are converted to wait + notify steps. User and schedule recipients are remapped to target IDs.
+
+#### Integrations
+
+Integrations are matched by name and migrated to IRM integrations. When an escalation from the same team was migrated, it is linked to the integration. Unsupported types are skipped unless `UNSUPPORTED_INTEGRATION_TO_WEBHOOKS=true`.
+
+### After migration
+
+- Connect integrations (press "How to connect" on the integration page).
+- Ensure users connect notification channels (phone, Slack, etc.) in target IRM.
+- Review escalation chains and schedules for partial coverage if some users were unmatched.
 
 ## Grafana OnCall OSS
 
