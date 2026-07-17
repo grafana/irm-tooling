@@ -10,7 +10,7 @@ certifi==2024.12.14
     # via
     #   kubernetes
     #   requests
-charset-normalizer==3.4.7
+charset-normalizer==3.4.9
     # via requests
 google-auth==2.55.1
     # via kubernetes
