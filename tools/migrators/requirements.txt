@@ -14,7 +14,7 @@ charset-normalizer==3.4.9
     # via requests
 google-auth==2.55.1
     # via kubernetes
-idna==3.15
+idna==3.18
     # via requests
 iniconfig==2.3.0
     # via pytest
