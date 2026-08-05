@@ -215,6 +215,13 @@ Resources that can be migrated using this tool:
 
 - Obtain a PagerDuty API **user token**: <https://support.pagerduty.com/docs/api-access-keys#generate-a-user-token-rest-api-key>
 
+A **General Access REST API Key** (account-level) will not work with the default
+`SCHEDULE_MIGRATION_MODE=ical`: a schedule's iCal feed URL belongs to an individual
+user, so PagerDuty only returns it (`http_cal_url`) for a user token. With an
+account-level key the tool stops before migrating anything and lists the schedules
+it could not get a feed URL for. If you can only use an account-level key, migrate
+schedules with `SCHEDULE_MIGRATION_MODE=web` instead.
+
 ### Migrate unsupported integration types
 
 It's possible to migrate unsupported integration types to [Grafana IRM incoming webhooks](https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/integrations/webhooks/incoming-webhooks/).
@@ -406,7 +413,11 @@ There are two ways to migrate on-call schedules:
   in PD. Pass `SCHEDULE_MIGRATION_MODE=web` to the tool to enable this mode.
 - Using ICalendar file URLs from PagerDuty. This way it's always possible to migrate schedules without any manual
   changes in PD, but resulting schedules in Grafana IRM will be read-only. Pass `SCHEDULE_MIGRATION_MODE=ical` to
-  the tool to enable this mode.
+  the tool to enable this mode. This mode requires `PAGERDUTY_API_TOKEN` to be a
+  [User Token REST API Key](https://support.pagerduty.com/docs/api-access-keys#generate-a-user-token-rest-api-key),
+  because PagerDuty only returns a schedule's iCal feed URL (`http_cal_url`) to a user token. If any schedule comes
+  back without a feed URL, the tool stops before migrating anything and lists the affected schedules; switch to
+  `SCHEDULE_MIGRATION_MODE=web` if a user token is not an option.
 
 On-call schedules will be migrated to new Grafana IRM schedules with the same name as in PD. Any existing schedules
 with the same name will be deleted before migration. Any on-call schedules that reference unmatched users won't be
