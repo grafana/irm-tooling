@@ -13,16 +13,18 @@ Currently the migration tool supports migrating from:
 ## Getting Started
 
 1. Make sure you have `docker` installed and running
-2. Build the docker image: `docker build -t oncall-migrator .`
-3. Obtain a Grafana IRM API token and API URL on the "Settings" page of your Grafana IRM instance
-4. Depending on which tool you are migrating from, see more specific instructions there:
+2. Clone this repo.
+3. Change into the `./tools/migrators` directory.
+4. Build the docker image: `docker build -t oncall-migrator .`
+5. Obtain a Grafana IRM API token and API URL on the "Settings" page of your Grafana IRM instance
+6. Depending on which tool you are migrating from, see more specific instructions there:
    - [PagerDuty](#prerequisites)
    - [Splunk OnCall](#prerequisites-1)
    - [Opsgenie](#prerequisites-2)
    - [Jira Service Management (JSM)](#jira-service-management-jsm)
    - [Grafana OnCall OSS](#grafana-oncall-oss)
-5. Run a [migration plan](#migration-plan)
-6. If you are pleased with the results of the migration plan, run the tool in [migrate mode](#migration)
+7. Run a [migration plan](#migration-plan)
+8. If you are pleased with the results of the migration plan, run the tool in [migrate mode](#migration)
 
 ### Migration Plan
 
