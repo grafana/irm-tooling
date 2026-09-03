@@ -65,5 +65,5 @@ urllib3==2.7.0
     #   kubernetes
     #   pdpyras
     #   requests
-websocket-client==1.8.0
+websocket-client==1.9.2
     # via kubernetes
