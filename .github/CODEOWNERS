@@ -1,2 +1,3 @@
-# Default ownership is the whole team
-* @grafana/grafana-irm-frontend @grafana/grafana-irm-backend
+# Enable IRM — onboarding tooling and migrators.
+# https://github.com/grafana/irm/issues/11247
+* @grafana/enable-irm
