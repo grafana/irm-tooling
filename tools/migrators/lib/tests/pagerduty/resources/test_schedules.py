@@ -1,5 +1,5 @@
 import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -8,6 +8,7 @@ from lib.pagerduty.resources.schedules import (
     Schedule,
     filter_schedules,
     match_schedule,
+    validate_schedules_for_ical_migration,
 )
 
 user_id_map = {
@@ -2344,3 +2345,58 @@ def test_override_deactivated_user():
         "Override: User with ID 'USER_ID_4' not found. The user probably has been deactivated in PagerDuty."
     ]
     assert oncall_schedule is None
+
+
+@patch("lib.pagerduty.resources.schedules.SCHEDULE_MIGRATION_MODE", "ical")
+def test_validate_schedules_for_ical_migration_raises_on_missing_url():
+    session = MagicMock()
+    session.api_key_access = "account"
+    schedules = [
+        {"id": "SCHEDULE1", "name": "Test Schedule", "http_cal_url": "https://pd/1"},
+        {"id": "SCHEDULE2", "name": "Broken Schedule"},
+    ]
+
+    with pytest.raises(ValueError) as exc_info:
+        validate_schedules_for_ical_migration(session, schedules)
+
+    message = str(exc_info.value)
+    assert "Broken Schedule (SCHEDULE2)" in message
+    assert "Test Schedule" not in message
+    assert "account-level (General Access) key" in message
+    assert "user token" in message
+    assert "SCHEDULE_MIGRATION_MODE=web" in message
+
+
+@patch("lib.pagerduty.resources.schedules.SCHEDULE_MIGRATION_MODE", "ical")
+def test_validate_schedules_for_ical_migration_tolerates_key_access_errors():
+    session = MagicMock()
+    type(session).api_key_access = property(
+        lambda self: (_ for _ in ()).throw(Exception("boom"))
+    )
+    schedules = [{"id": "SCHEDULE1", "name": "Broken Schedule"}]
+
+    with pytest.raises(ValueError) as exc_info:
+        validate_schedules_for_ical_migration(session, schedules)
+
+    assert "detected key type: unknown" in str(exc_info.value)
+
+
+@patch("lib.pagerduty.resources.schedules.SCHEDULE_MIGRATION_MODE", "ical")
+def test_validate_schedules_for_ical_migration_passes_when_urls_present():
+    schedules = [
+        {"id": "SCHEDULE1", "name": "Test Schedule", "http_cal_url": "https://pd/1"},
+    ]
+
+    validate_schedules_for_ical_migration(MagicMock(), schedules)
+
+
+@patch("lib.pagerduty.resources.schedules.SCHEDULE_MIGRATION_MODE", "ical")
+def test_validate_schedules_for_ical_migration_passes_without_schedules():
+    validate_schedules_for_ical_migration(MagicMock(), [])
+
+
+@patch("lib.pagerduty.resources.schedules.SCHEDULE_MIGRATION_MODE", "web")
+def test_validate_schedules_for_ical_migration_skipped_in_web_mode():
+    schedules = [{"id": "SCHEDULE1", "name": "Test Schedule"}]
+
+    validate_schedules_for_ical_migration(MagicMock(), schedules)

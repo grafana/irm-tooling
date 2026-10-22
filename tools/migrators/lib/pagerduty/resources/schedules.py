@@ -6,6 +6,8 @@ from enum import Enum
 from typing import Optional
 from uuid import uuid4
 
+from pdpyras import APISession
+
 from lib.common.report import TAB
 from lib.constants import ONCALL_SHIFT_WEB_SOURCE
 from lib.oncall.api_client import OnCallAPIClient
@@ -92,6 +94,68 @@ def filter_schedules(
                 print(f"{TAB}Schedule {schedule_id}: {', '.join(reasons)}")
 
     return filtered_schedules
+
+
+USER_TOKEN_DOCS_URL = (
+    "https://support.pagerduty.com/docs/api-access-keys"
+    "#generate-a-user-token-rest-api-key"
+)
+
+
+def validate_schedules_for_ical_migration(
+    session: APISession, schedules: typing.List[typing.Dict[str, typing.Any]]
+) -> None:
+    """
+    Make sure every schedule has an iCal feed URL before migrating anything.
+
+    A PagerDuty schedule's iCal feed URL is tied to an individual user, so the
+    API only returns it (as `http_cal_url`) when authenticating with a User
+    Token REST API Key. With a General Access (account-level) key the field is
+    missing and there is no way to migrate schedules in ical mode.
+    """
+
+    if SCHEDULE_MIGRATION_MODE != SCHEDULE_MIGRATION_MODE_ICAL:
+        return
+
+    missing = [s for s in schedules if not s.get("http_cal_url")]
+    if not missing:
+        return
+
+    listed = [
+        "{}{} ({})".format(TAB, schedule.get("name", "unnamed"), schedule["id"])
+        for schedule in missing[:10]
+    ]
+    if len(missing) > 10:
+        listed.append("{}... and {} more".format(TAB, len(missing) - 10))
+
+    try:
+        key_access = session.api_key_access
+    except Exception:
+        key_access = None
+
+    if key_access == "account":
+        key_note = (
+            "The PagerDuty API key in use is an account-level (General Access) "
+            "key, which never receives iCal feed URLs."
+        )
+    else:
+        key_note = (
+            "PagerDuty did not return iCal feed URLs for the API key in use "
+            "(detected key type: {}).".format(key_access or "unknown")
+        )
+
+    raise ValueError(
+        "PagerDuty did not return an iCal feed URL (http_cal_url) for the "
+        "following schedules:\n"
+        "{}\n"
+        "{} A schedule's iCal feed URL belongs to an individual user, so "
+        "PagerDuty only returns it for a User Token REST API Key.\n"
+        "To continue, either set PAGERDUTY_API_TOKEN to a user token ({}) "
+        "or migrate schedules without iCal feeds by setting "
+        "SCHEDULE_MIGRATION_MODE=web.".format(
+            "\n".join(listed), key_note, USER_TOKEN_DOCS_URL
+        )
+    )
 
 
 def match_schedule(
