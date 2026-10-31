@@ -30,7 +30,7 @@ pdpyras==5.4.1
     # via -r requirements.in
 pluggy==1.6.0
     # via pytest
-pyasn1==0.6.4
+pyasn1==0.6.5
     # via
     #   pyasn1-modules
     #   rsa
