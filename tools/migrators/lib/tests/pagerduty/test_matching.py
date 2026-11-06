@@ -1610,3 +1610,44 @@ def test_match_integration():
         )
 
     assert integrations == expected_integrations_result
+
+
+def test_match_users_for_schedule_ignores_stale_list_users():
+    # GET /schedules (list) can return users in the top-level "users" field that are no
+    # longer part of any layer (GET /schedules/{id} doesn't return them).
+    users = [
+        {"id": "ACTIVE", "name": "Active", "oncall_user": None},
+        {"id": "ENDED", "name": "Ended Layer", "oncall_user": None},
+        {"id": "OVERRIDE", "name": "Override", "oncall_user": None},
+        {"id": "STALE", "name": "Stale", "oncall_user": None},
+    ]
+    schedule = {
+        "users": [{"id": "STALE"}, {"id": "ACTIVE"}, {"id": "ENDED"}],
+        "schedule_layers": [
+            {"end": None, "users": [{"user": {"id": "ACTIVE"}}]},
+            {"end": "2020-01-01T00:00:00Z", "users": [{"user": {"id": "ENDED"}}]},
+        ],
+        "overrides": [{"user": {"id": "OVERRIDE"}}],
+    }
+
+    match_users_for_schedule(schedule, users)
+
+    assert [u["id"] for u in schedule["unmatched_users"]] == ["ACTIVE"]
+
+
+def test_match_users_for_schedule_ignores_unmatched_override_users():
+    # Schedule.to_oncall_schedule skips overrides for unmapped users, so an unmatched
+    # override user must not block an otherwise migratable schedule.
+    users = [
+        {"id": "MATCHED", "name": "Matched", "oncall_user": {"id": "OC1"}},
+        {"id": "OVERRIDE", "name": "Override", "oncall_user": None},
+    ]
+    schedule = {
+        "users": [{"id": "MATCHED"}],
+        "schedule_layers": [{"end": None, "users": [{"user": {"id": "MATCHED"}}]}],
+        "overrides": [{"user": {"id": "OVERRIDE"}}],
+    }
+
+    match_users_for_schedule(schedule, users)
+
+    assert schedule["unmatched_users"] == []
