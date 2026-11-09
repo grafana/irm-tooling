@@ -28,7 +28,7 @@ packaging==23.2
     # via pytest
 pdpyras==5.4.1
     # via -r requirements.in
-pluggy==1.6.0
+pluggy==1.7.0
     # via pytest
 pyasn1==0.6.4
     # via
