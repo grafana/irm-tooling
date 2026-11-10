@@ -1635,9 +1635,9 @@ def test_match_users_for_schedule_ignores_stale_list_users():
     assert [u["id"] for u in schedule["unmatched_users"]] == ["ACTIVE"]
 
 
-def test_match_users_for_schedule_ignores_unmatched_override_users():
-    # Schedule.to_oncall_schedule skips overrides for unmapped users, so an unmatched
-    # override user must not block an otherwise migratable schedule.
+def test_match_users_for_schedule_does_not_report_override_users_as_unmatched():
+    # Override users aren't rotation members. In web mode an override for an unmapped
+    # user is reported by Schedule.to_oncall_schedule (migration_errors) instead.
     users = [
         {"id": "MATCHED", "name": "Matched", "oncall_user": {"id": "OC1"}},
         {"id": "OVERRIDE", "name": "Override", "oncall_user": None},

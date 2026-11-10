@@ -45,8 +45,9 @@ def _schedule_participant_user_ids(schedule: dict) -> list[str]:
     PD user ids in layers that haven't ended, i.e. the rotation members that must map to
     OnCall users for the schedule to migrate.
 
-    Overrides are not included: ``Schedule.to_oncall_schedule`` skips overrides for unmapped
-    users so the remaining shifts still migrate, so they must not block the schedule.
+    Overrides are not included: they are not rotation members. In web mode an override for
+    an unmapped user is reported separately, as a ``migration_errors`` entry from
+    ``Schedule.to_oncall_schedule``, and still blocks the schedule.
 
     The top-level ``users`` field returned by ``GET /schedules`` (list endpoint) can include
     users that are no longer part of the schedule (``GET /schedules/{id}`` doesn't return
