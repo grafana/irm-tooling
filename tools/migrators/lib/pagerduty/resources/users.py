@@ -1,7 +1,9 @@
+import datetime
 import typing
 
 from lib.common.report import TAB
 from lib.pagerduty.config import PAGERDUTY_FILTER_USERS, VERBOSE_LOGGING
+from lib.pagerduty.resources.schedules import _pd_datetime_to_dt
 from lib.utils import find_by_id
 
 
@@ -38,11 +40,37 @@ def filter_users(
     return filtered_users
 
 
+def _schedule_participant_user_ids(schedule: dict) -> list[str]:
+    """
+    PD user ids in layers that haven't ended, i.e. the rotation members that must map to
+    OnCall users for the schedule to migrate.
+
+    Overrides are not included: they are not rotation members. In web mode an override for
+    an unmapped user is reported separately, as a ``migration_errors`` entry from
+    ``Schedule.to_oncall_schedule``, and still blocks the schedule.
+
+    The top-level ``users`` field returned by ``GET /schedules`` (list endpoint) can include
+    users that are no longer part of the schedule (``GET /schedules/{id}`` doesn't return
+    them), so it's only used as a fallback when no layers are present in the payload.
+    """
+    if "schedule_layers" not in schedule:
+        return [u["id"] for u in schedule.get("users") or []]
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    user_ids = []
+    for layer in schedule["schedule_layers"]:
+        if layer.get("end") and _pd_datetime_to_dt(layer["end"]) < now:
+            continue
+        user_ids += [u["user"]["id"] for u in layer.get("users") or []]
+
+    return list(dict.fromkeys(user_ids))
+
+
 def match_users_for_schedule(schedule: dict, users: list[dict]) -> None:
     unmatched_users = []
 
-    for user_reference in schedule["users"]:
-        user = find_by_id(users, user_reference["id"])
+    for user_id in _schedule_participant_user_ids(schedule):
+        user = find_by_id(users, user_id)
 
         if not user:
             continue
