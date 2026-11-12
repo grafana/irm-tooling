@@ -46,6 +46,7 @@ from lib.pagerduty.resources.schedules import (
     filter_schedules,
     match_schedule,
     migrate_schedule,
+    validate_schedules_for_ical_migration,
 )
 from lib.pagerduty.resources.services import (
     BusinessService,
@@ -111,6 +112,9 @@ def migrate() -> None:
     schedules = filter_schedules(schedules)
     filtered_resources_summary["schedules"] = len(schedules)
     print(f"Found {len(schedules)} schedules after filtering")
+
+    # Fail before touching anything if schedules cannot be migrated in ical mode
+    validate_schedules_for_ical_migration(session, schedules)
 
     # Fetch overrides from PagerDuty
     since = datetime.datetime.now(datetime.timezone.utc)
